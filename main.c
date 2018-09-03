@@ -83,6 +83,63 @@ ssize_t readBlock(int fd, char* buffer)
 	return 0;
 }
 
+int processingBlock(char* block, ssize_t length, char* charset_out, int* charset_counter_out)
+{
+	int count_lines_in_block = 1;
+	bool first_symbol = true;
+	int carrage_ret_cnt = 0;
+
+	for(int i = 0; i < length; i++)
+	{
+		if (block[i] == '\0')
+		{
+			first_symbol = true;
+			continue;
+		}
+
+		if(block[i] == '\r')
+			if (i != length - 1 && block[i + 1] == '\n')
+			{
+				block[i+1] = block[i] = '\0';
+				carrage_ret_cnt++;
+			}
+			else
+			{
+				block[i] = '\0';
+			}
+		
+		if (block[i] == '\n')
+		{
+			block[i] = '\0';
+			count_lines_in_block++;
+			first_symbol = true;
+		}
+
+		if (first_symbol)
+		{
+			char* pos = strchr(charset_out, block[i]);
+			if (!pos)
+			{
+				charset_out[strlen(charset_out)] = block[i];
+				charset_counter_out[strlen(charset_out)] = 1;
+			}
+			else
+			{
+				charset_counter_out[pos - charset_out]++;
+			}
+		}
+		if (block[i] == '\n')
+		{
+			block[i] = '\0';
+			count_lines_in_block++;
+			first_symbol = true;
+		}
+	}
+
+	printf("carrage_ret_cnt = %d\n", carrage_ret_cnt);
+	return count_lines_in_block;
+}
+
 int main()
 {
 	checkBlockSize();
@@ -94,50 +151,51 @@ int main()
 		exit(-1);
 	}
 
-	//printf("FileSize = %ld\n", size);
+	printf("FileSize = %ld\n", size);
 	char* buffer = malloc(BLOCK_SIZE);
 	int dict_fd = open(FILENAME, O_RDONLY);
 	ssize_t bytes_readed;
 	int count_lines_all = 1;
 	bool first_run = true;
+	
+	int charset_population = 0;
+	char charset[256];
+	unsigned int charset_counter[256];
+
+	memset(charset, '\0', 256 * sizeof(char));
+	memset(charset_counter, '\0', 256 * sizeof(unsigned int));
 
 	while(bytes_readed = readBlock(dict_fd, buffer))
 	{
-		int count_lines_in_block = 1;
-		for(int i = 0; i < bytes_readed; i++)
-		{
-			if (buffer[i] == '\n')
-			{
-				count_lines_in_block++;
-			}
-		}
-		count_lines_all += count_lines_in_block;
+		count_lines_all += processingBlock(buffer, bytes_readed, charset, charset_counter);
 	}
 
-	printf("Lines in file: %d\n", count_lines);
+	printf("Lines in file: %d\n", count_lines_all);
+	
+	printf("Charset: \"%s\"\n", charset);
 	
 	lseek64(dict_fd, 0L, SEEK_SET);
 	char** pointers = malloc(count_lines_all * sizeof(char*));
 	if(!pointers)
 	{
-		printf("int main(): malloc(count_lines * sizeof(char*) failed!\n");
+		printf("int main(): malloc(count_lines * sizeof(char*)) failed!\n");
 		exit(-1);
 	}
 
 	int64_t counter = 0;
-	while(bytes_readed = readBlock(dict_fd, buffer))
-	{	
-		char* iterator = buffer;
-		//printf("bytes_readed = %ld\n", bytes_readed);
-		while(iterator - buffer < bytes_readed)
-		{	
-			printf("buffer = %p; iterator = %p; difference = %ld; bytes_readed = %ld\n", buffer, iterator, iterator-buffer, bytes_readed);
-			pointers[counter++] = iterator;
-			printf("strlen(iterator) = %lu\n", strlen(iterator));
-			iterator += strlen(iterator) + 1;
+	// while(bytes_readed = readBlock(dict_fd, buffer))
+	// {	
+	// 	char* iterator = buffer;
+	// 	//printf("bytes_readed = %ld\n", bytes_readed);
+	// 	while(iterator - buffer < bytes_readed)
+	// 	{	
+	// 		printf("buffer = %p; iterator = %p; difference = %ld; bytes_readed = %ld\n", buffer, iterator, iterator-buffer, bytes_readed);
+	// 		pointers[counter++] = iterator;
+	// 		printf("strlen(iterator) = %lu\n", strlen(iterator));
+	// 		iterator += strlen(iterator) + 1;
 
-		}
-	}
+	// 	}
+	// }
 
 	printf("Created %ld pointers!\n", --counter);
 
